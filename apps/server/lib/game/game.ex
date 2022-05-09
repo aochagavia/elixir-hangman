@@ -1,17 +1,17 @@
 defmodule Game do
   @spec new :: pid
   def new() do
-    {:ok, pid} = GenServer.start_link(Game.Server, nil)
+    {:ok, pid} = Agent.start_link(fn -> Game.State.with_word("platipus") end)
     pid
   end
 
   @spec guess(pid, integer) :: Game.State.guess_result()
   def guess(pid, char) do
-    GenServer.call(pid, {:guess, char})
+    Agent.get_and_update(pid, fn state -> Game.State.update(state, char) end)
   end
 
   @spec state(pid) :: Game.State.t()
   def state(pid) do
-    :sys.get_state(pid)
+    Agent.get(pid, fn state -> state end)
   end
 end
