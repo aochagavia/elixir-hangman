@@ -1,14 +1,17 @@
 defmodule TcpServer do
   def run() do
     # `:binary` = receives data as binaries (instead of lists)
-    # `active: false` = blocks on `:gen_tcp.recv/2` until data is available
-    {:ok, socket} = :gen_tcp.listen(8080, [:binary, active: false])
+    {:ok, socket} = :gen_tcp.listen(8080, [:binary])
     accept(socket)
   end
 
   def accept(socket) do
     {:ok, client} = :gen_tcp.accept(socket)
-    spawn(TcpServer, :handle_client, [client])
+    {:ok, pid} = Task.start(fn -> TcpServer.handle_client(client) end)
+
+    # Necessary so the newly created process receives messages
+    :gen_tcp.controlling_process(client, pid)
+
     accept(socket)
   end
 
@@ -20,18 +23,30 @@ defmodule TcpServer do
     state = Game.state(game)
     :ok = :gen_tcp.send(client, <<String.length(state.word)>>)
 
-    process_next_guess(client, game)
+    game_loop(client, game)
   end
 
-  defp process_next_guess(socket, game) do
-    {:ok, <<guess>>} = :gen_tcp.recv(socket, 1)
+  defp game_loop(client, game) do
+    guess = get_next_guess()
+    {result, outcome} = handle_guess(game, guess)
+    :ok = :gen_tcp.send(client, Encoding.encode_guess_result(result, outcome))
 
-    result = Game.guess(game, guess)
+    game_loop(client, game)
+  end
+
+  defp get_next_guess() do
+    receive do
+      {:tcp, _socket, <<guess>>} -> guess
+      unknown -> IO.puts("Unknown message received, closing connection: #{inspect(unknown)}")
+    end
+  end
+
+  @spec handle_guess(pid, integer) :: {Game.State.guess_result(), Game.Stae.game_outcome()}
+  defp handle_guess(game, guess) do
+    guess_result = Game.guess(game, guess)
     new_state = Game.state(game)
-    outcome = Game.State.game_outcome(new_state)
+    game_outcome = Game.State.game_outcome(new_state)
 
-    :ok = :gen_tcp.send(socket, Encoding.encode_guess_result(result, outcome))
-
-    process_next_guess(socket, game)
+    {guess_result, game_outcome}
   end
 end
