@@ -9,7 +9,7 @@ defmodule TcpServer do
     {:ok, client} = :gen_tcp.accept(socket)
     {:ok, pid} = Task.start(fn -> TcpServer.handle_client(client) end)
 
-    # Necessary so the newly created process receives messages
+    # Necessary so the newly created process receives messages (instead of this one)
     :gen_tcp.controlling_process(client, pid)
 
     accept(socket)
