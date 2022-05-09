@@ -17,7 +17,7 @@ defmodule TcpServer do
 
     # Our custom protocol specifies that the server sends the selected word's length right after
     # the connection has been established
-    state = :sys.get_state(game)
+    state = Game.state(game)
     :ok = :gen_tcp.send(client, <<String.length(state.word)>>)
 
     process_next_guess(client, game)
@@ -27,7 +27,7 @@ defmodule TcpServer do
     {:ok, <<guess>>} = :gen_tcp.recv(socket, 1)
 
     result = Game.guess(game, guess)
-    new_state = :sys.get_state(game)
+    new_state = Game.state(game)
     outcome = Game.State.game_outcome(new_state)
 
     :ok = :gen_tcp.send(socket, Encoding.encode_guess_result(result, outcome))

@@ -9,4 +9,9 @@ defmodule Game do
   def guess(pid, char) do
     GenServer.call(pid, {:guess, char})
   end
+
+  @spec state(pid) :: Game.State.t()
+  def state(pid) do
+    :sys.get_state(pid)
+  end
 end
