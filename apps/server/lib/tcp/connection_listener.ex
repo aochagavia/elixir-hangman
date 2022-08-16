@@ -13,7 +13,7 @@ defmodule Server.Tcp.ConnectionListener do
 
   @impl true
   def init(opts) do
-    state = %{
+    state = %Server.Game.ConnectionListenerState{
       socket: nil,
       port: opts[:port] || 8080,
       word_provider: opts[:word_provider] || Server.Game.HardcodedWordProvider,
@@ -24,7 +24,7 @@ defmodule Server.Tcp.ConnectionListener do
   end
 
   @impl true
-  def handle_continue(:ok, state) do
+  def handle_continue(:ok, %Server.Game.ConnectionListenerState{} = state) do
     {:ok, socket} = :gen_tcp.listen(state.port, [:binary])
 
     # Start accepting after continue
@@ -37,23 +37,21 @@ defmodule Server.Tcp.ConnectionListener do
     }
   end
 
-  def handle_continue(:accept_next, state) do
+  def handle_continue(:accept_next, %Server.Game.ConnectionListenerState{} = state) do
     GenServer.cast(__MODULE__, :accept)
     {:noreply, state}
   end
 
   @impl true
-  def handle_cast(:accept, state) do
-    # TODO: handle the case in which accept fails
-    {:ok, client} = :gen_tcp.accept(state.socket)
+  def handle_cast(:accept, %Server.Game.ConnectionListenerState{} = state) do
+    with {:ok, client} <- :gen_tcp.accept(state.socket),
+         {:ok, pid} <-
+           Server.Tcp.ConnectionHandler.start(socket: client, word_provider: state.word_provider) do
+      :gen_tcp.controlling_process(client, pid)
+      GenServer.cast(state.connection_monitor, {:monitor, pid})
+    end
 
-    # TODO: will the listener crash if the client fails to start? I think so...
-    {:ok, pid} =
-      Server.Tcp.ConnectionHandler.start(socket: client, word_provider: state.word_provider)
-
-    :gen_tcp.controlling_process(client, pid)
-
-    GenServer.cast(state.connection_monitor, {:monitor, pid})
+    # TODO: log the case in which accept or start fail
 
     {
       :noreply,
