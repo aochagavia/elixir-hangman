@@ -2,7 +2,7 @@ defmodule Server.TcpIntegrationTest do
   use ExUnit.Case, async: true
 
   setup do
-    {:ok, monitor} = Server.Tcp.ConnectionMonitor.start_link([])
+    {:ok, monitor} = Server.Tcp.ConnectionMonitor.start_link([], name: Server.TcpIntegrationTest)
 
     {:ok, server} =
       Server.Tcp.ConnectionListener.start_link(
@@ -28,23 +28,29 @@ defmodule Server.TcpIntegrationTest do
   test "server keeps track of client connections", context do
     assert 0 == GenServer.call(context.connection_monitor, :player_count)
 
-    # TODO: find a way to get rid of Process.sleep
-
     socket1 = connect(context.port)
-    Process.sleep(100)
-    assert 1 == GenServer.call(context.connection_monitor, :player_count)
+
+    with_retry(fn ->
+      assert 1 == GenServer.call(context.connection_monitor, :player_count)
+    end)
 
     socket2 = connect(context.port)
-    Process.sleep(100)
-    assert 2 == GenServer.call(context.connection_monitor, :player_count)
+
+    with_retry(fn ->
+      assert 2 == GenServer.call(context.connection_monitor, :player_count)
+    end)
 
     :ok = :gen_tcp.shutdown(socket2, :read_write)
-    Process.sleep(100)
-    assert 1 == GenServer.call(context.connection_monitor, :player_count)
+
+    with_retry(fn ->
+      assert 1 == GenServer.call(context.connection_monitor, :player_count)
+    end)
 
     :ok = :gen_tcp.shutdown(socket1, :read_write)
-    Process.sleep(100)
-    assert 0 == GenServer.call(context.connection_monitor, :player_count)
+
+    with_retry(fn ->
+      assert 0 == GenServer.call(context.connection_monitor, :player_count)
+    end)
   end
 
   test "server allows new connection after existing connection crashed", context do
@@ -58,5 +64,21 @@ defmodule Server.TcpIntegrationTest do
   defp connect(port) do
     {:ok, socket} = :gen_tcp.connect('localhost', port, [:binary, packet: 0, active: false])
     socket
+  end
+
+  defp with_retry(fun, timeout \\ 100)
+
+  defp with_retry(fun, 0) do
+    fun.()
+  end
+
+  defp with_retry(fun, timeout) do
+    try do
+      fun.()
+    rescue
+      ExUnit.AssertionError ->
+        Process.sleep(10)
+        with_retry(fun, max(0, timeout - 10))
+    end
   end
 end
